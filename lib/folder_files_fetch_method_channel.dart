@@ -10,8 +10,27 @@ class MethodChannelFolderFilesFetch extends FolderFilesFetchPlatform {
   final methodChannel = const MethodChannel('folder_files_fetch');
 
   @override
-  Future<String?> getPlatformVersion() async {
-    final version = await methodChannel.invokeMethod<String>('getPlatformVersion');
-    return version;
+  Future<List<String>> fetchFileUriList({
+    required String folderPath,
+    required SortType sortType,
+    required SortBy sortBy,
+  }) async {
+    final foldersFiles = await methodChannel.invokeMethod('fetchFileUriList', {
+      'folderPath': folderPath,
+      'sortType': sortType.name,
+      'sortBy': sortBy.name,
+    });
+
+    if (foldersFiles == null) return [];
+
+    // Convert List<Object?> to List<String>
+    if (foldersFiles is List) {
+      return foldersFiles
+          .where((item) => item != null)
+          .map((item) => item.toString())
+          .where((item) => item.isNotEmpty)
+          .toList();
+    }
+    return [];
   }
 }

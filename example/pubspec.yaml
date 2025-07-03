@@ -16,7 +16,7 @@ environment:
 dependencies:
   flutter:
     sdk: flutter
-
+  android_folder_permission: ^0.0.1
   folder_files_fetch:
     # When depending on this package from a real application you should use:
     #   folder_files_fetch: ^x.y.z

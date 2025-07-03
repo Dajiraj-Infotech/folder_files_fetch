@@ -1,6 +1,10 @@
+import 'package:folder_files_fetch/folder_files_fetch.dart';
 import 'package:plugin_platform_interface/plugin_platform_interface.dart';
 
 import 'folder_files_fetch_method_channel.dart';
+
+// Export enums to make them available to users of the plugin
+export 'package:folder_files_fetch/src/utils/enums.dart';
 
 abstract class FolderFilesFetchPlatform extends PlatformInterface {
   /// Constructs a FolderFilesFetchPlatform.
@@ -23,7 +27,11 @@ abstract class FolderFilesFetchPlatform extends PlatformInterface {
     _instance = instance;
   }
 
-  Future<String?> getPlatformVersion() {
-    throw UnimplementedError('platformVersion() has not been implemented.');
+  Future<List<String>> fetchFileUriList({
+    required String folderPath,
+    required SortType sortType,
+    required SortBy sortBy,
+  }) {
+    throw UnimplementedError('fetchFileUriList() has not been implemented.');
   }
 }

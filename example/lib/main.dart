@@ -1,8 +1,8 @@
+import 'package:android_folder_permission/android_folder_permission.dart';
 import 'package:flutter/material.dart';
 import 'dart:async';
-
-import 'package:flutter/services.dart';
 import 'package:folder_files_fetch/folder_files_fetch.dart';
+import 'package:flutter/services.dart';
 
 void main() {
   runApp(const MyApp());
@@ -16,35 +16,68 @@ class MyApp extends StatefulWidget {
 }
 
 class _MyAppState extends State<MyApp> {
-  String _platformVersion = 'Unknown';
-  final _folderFilesFetchPlugin = FolderFilesFetch();
+  bool _hasFolderPermission = false;
+  bool _isLoading = false;
+  List<String> _foldersFiles = [];
+
+  final _androidFolderPermissionPlugin = AndroidFolderPermission();
+  final _fetchFoldersFilesPlugin = FolderFilesFetch();
+
+  final _folderPath = 'Android/media/com.whatsapp/WhatsApp/Media/.Statuses';
 
   @override
   void initState() {
     super.initState();
-    initPlatformState();
+    fetchFileUriList();
   }
 
-  // Platform messages are asynchronous, so we initialize in an async method.
-  Future<void> initPlatformState() async {
-    String platformVersion;
-    // Platform messages may fail, so we use a try/catch PlatformException.
-    // We also handle the message potentially returning null.
+  // Fetch the files from the folder
+  Future<void> fetchFileUriList() async {
+    // Check if the folder has permission
+    await checkFolderPermission();
+    if (!_hasFolderPermission) return;
+
+    setState(() => _isLoading = true);
+
+    // Fetch the files
     try {
-      platformVersion =
-          await _folderFilesFetchPlugin.getPlatformVersion() ?? 'Unknown platform version';
+      _foldersFiles = await _fetchFoldersFilesPlugin.fetchFileUriList(
+        folderPath: _folderPath,
+        sortType: SortType.asc,
+        sortBy: SortBy.name,
+      );
     } on PlatformException {
-      platformVersion = 'Failed to get platform version.';
+      _foldersFiles = [];
+    } finally {
+      setState(() {
+        _isLoading = false;
+        _foldersFiles = _foldersFiles;
+      });
     }
+  }
 
-    // If the widget was removed from the tree while the asynchronous platform
-    // message was in flight, we want to discard the reply rather than calling
-    // setState to update our non-existent appearance.
+  // Check if the folder has permission
+  Future<void> checkFolderPermission() async {
+    try {
+      _hasFolderPermission = await _androidFolderPermissionPlugin
+          .checkFolderPermission(path: _folderPath);
+    } on PlatformException {
+      _hasFolderPermission = false;
+    }
     if (!mounted) return;
+    setState(() => _hasFolderPermission = _hasFolderPermission);
+  }
 
-    setState(() {
-      _platformVersion = platformVersion;
-    });
+  // Request the folder permission
+  Future<void> requestFolderPermission() async {
+    try {
+      final result = await _androidFolderPermissionPlugin
+          .requestFolderPermission(path: _folderPath);
+      debugPrint('result: $result');
+      if (result.isNotEmpty) await fetchFileUriList();
+    } on PlatformException catch (e) {
+      debugPrint('error: ${e.message}');
+    }
   }
 
   @override
@@ -52,12 +85,82 @@ class _MyAppState extends State<MyApp> {
     return MaterialApp(
       home: Scaffold(
         appBar: AppBar(
-          title: const Text('Plugin example app'),
+          forceMaterialTransparency: true,
+          title: const Text('Fetch Files'),
         ),
-        body: Center(
-          child: Text('Running on: $_platformVersion\n'),
+        body: _buildBody(),
+      ),
+    );
+  }
+
+  Widget _buildBody() {
+    if (!_hasFolderPermission) return _buildNoPermission();
+    if (_isLoading) return _buildLoading();
+    return _buildListView(context);
+  }
+
+  Widget _buildNoPermission() {
+    return Center(
+      child: Padding(
+        padding: const EdgeInsets.all(16.0),
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            Text(
+              'No permission',
+              style: Theme.of(context).textTheme.titleLarge,
+            ),
+            const SizedBox(height: 16.0),
+            Text(
+              'Path: $_folderPath',
+              textAlign: TextAlign.center,
+              style: Theme.of(context).textTheme.bodyLarge,
+            ),
+            const SizedBox(height: 16.0),
+            ElevatedButton(
+              onPressed: () => requestFolderPermission(),
+              child: const Text('Request permission'),
+            ),
+          ],
         ),
       ),
+    );
+  }
+
+  Widget _buildLoading() {
+    return const Center(child: CircularProgressIndicator());
+  }
+
+  Widget _widgetEmpty() {
+    return Center(
+      child: Text(
+        'No files found',
+        style: Theme.of(context).textTheme.titleLarge,
+      ),
+    );
+  }
+
+  Widget _buildListView(BuildContext context) {
+    if (_foldersFiles.isEmpty) return _widgetEmpty();
+
+    return ListView.builder(
+      padding: const EdgeInsets.all(16.0),
+      itemCount: _foldersFiles.length,
+      itemBuilder: (context, index) {
+        return _buildListItem(context, index);
+      },
+    );
+  }
+
+  Widget _buildListItem(BuildContext context, int index) {
+    final fileUri = _foldersFiles[index];
+    final decodedUri = Uri.decodeFull(fileUri);
+    final fileName = decodedUri.split('/').last;
+    return ListTile(
+      contentPadding: EdgeInsets.zero,
+      leading: const Icon(Icons.insert_drive_file_outlined, size: 40),
+      title: Text(fileName),
+      subtitle: Text(decodedUri, maxLines: 2, overflow: TextOverflow.ellipsis),
     );
   }
 }
