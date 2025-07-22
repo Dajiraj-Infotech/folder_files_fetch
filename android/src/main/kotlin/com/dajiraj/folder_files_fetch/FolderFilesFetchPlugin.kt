@@ -14,6 +14,8 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+import kotlinx.coroutines.async
+import kotlinx.coroutines.awaitAll
 import java.time.LocalDateTime
 import java.time.format.DateTimeFormatter
 
@@ -169,6 +171,7 @@ class FolderFilesFetchPlugin: FlutterPlugin, MethodCallHandler {
   /**
    * Processes and sorts DocumentFile objects based on the specified sorting criteria.
    * This function filters valid files and applies sorting by name or date in ascending or descending order.
+   * Optimized to minimize system calls and maximize performance for large directories.
    * 
    * @param documentDirectory The DocumentFile representing the directory to process
    * @return List of sorted DocumentFile objects
@@ -177,56 +180,78 @@ class FolderFilesFetchPlugin: FlutterPlugin, MethodCallHandler {
     return withContext(Dispatchers.IO) {
       // Get all files in the directory
       val files = documentDirectory?.listFiles() ?: emptyArray()
-
-      // Collect valid files with their metadata for sorting
-      val validFilesWithMetadata = files.mapNotNull { file ->
-        FileWithMetadata(file)
-      }
+      
+      // Filter out null files
+      val validFiles = files.filterNotNull()
 
       Log.d(TAG, "SortType $sortType and SortBy $sortBy")
 
-      // Apply sorting based on the specified criteria
-      val sortedFiles = when {
-        (sortType ?: "") == ASC -> {
-          // Sort in ascending order
-          when (sortBy ?: "") {
-            NAME -> validFilesWithMetadata.sortedBy { it.fileName }.map { it.documentFile }
-            DATE -> validFilesWithMetadata.sortedBy { it.lastModified }.map { it.documentFile }
-            else -> validFilesWithMetadata.map { it.documentFile }
+      // Early return if no sorting is required - avoid metadata fetching entirely
+      if (sortType.isNullOrEmpty() || sortBy.isNullOrEmpty()) {
+        return@withContext validFiles
+      }
+
+      // For sorting, we need to fetch metadata efficiently in batch
+      // This approach fetches all needed metadata concurrently, then sorts based on cached values
+      val sortedFiles = when (sortBy) {
+        NAME -> {
+          // Create pairs of (file, fileName) using concurrent fetching
+          val deferredFilesWithNames = validFiles.map { file ->
+            async {
+              val fileName = try {
+                file.name ?: ""
+              } catch (e: Exception) {
+                Log.w(TAG, "Error getting file name: ${e.message}")
+                ""
+              }
+              Pair(file, fileName)
+            }
           }
-        }
-        (sortType ?: "") == DESC -> {
-          // Sort in descending order
-          when (sortBy ?: "") {
-            NAME -> validFilesWithMetadata.sortedByDescending { it.fileName }.map { it.documentFile }
-            DATE -> validFilesWithMetadata.sortedByDescending { it.lastModified }.map { it.documentFile }
-            else -> validFilesWithMetadata.map { it.documentFile }
+          
+          val filesWithNames = deferredFilesWithNames.awaitAll()
+          
+          // Sort based on cached file names
+          val sortedPairs = if (sortType == ASC) {
+            filesWithNames.sortedBy { it.second }
+          } else {
+            filesWithNames.sortedByDescending { it.second }
           }
+          
+          // Extract just the files
+          sortedPairs.map { it.first }
         }
-        else -> {
-          // No sorting applied, return files in original order
-          validFilesWithMetadata.map { it.documentFile }
+        DATE -> {
+          // Create pairs of (file, lastModified) using concurrent fetching
+          val deferredFilesWithDates = validFiles.map { file ->
+            async {
+              val lastModified = try {
+                file.lastModified()
+              } catch (e: Exception) {
+                Log.w(TAG, "Error getting last modified time: ${e.message}")
+                0L
+              }
+              Pair(file, lastModified)
+            }
+          }
+          
+          val filesWithDates = deferredFilesWithDates.awaitAll()
+          
+          // Sort based on cached dates
+          val sortedPairs = if (sortType == ASC) {
+            filesWithDates.sortedBy { it.second }
+          } else {
+            filesWithDates.sortedByDescending { it.second }
+          }
+          
+          // Extract just the files
+          sortedPairs.map { it.first }
         }
+        else -> validFiles
       }
 
       sortedFiles
     }
   }
-
-  /**
-   * Data class to hold file metadata for sorting purposes.
-   * This class wraps a DocumentFile with its name and last modified time
-   * to enable efficient sorting operations.
-   * 
-   * @param documentFile The DocumentFile object
-   * @param fileName The name of the file (defaults to documentFile.name)
-   * @param lastModified The last modified timestamp (defaults to documentFile.lastModified())
-   */
-  private data class FileWithMetadata(
-    val documentFile: DocumentFile,
-    val fileName: String = documentFile.name.toString(),
-    val lastModified: Long = documentFile.lastModified()
-  )
 
   /**
    * Gets the current date and time formatted as a string.
