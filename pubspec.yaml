@@ -1,6 +1,6 @@
 name: folder_files_fetch
 description: "A Flutter plugin for fetching files from folders with advanced sorting capabilities."
-version: 0.0.1
+version: 0.0.2
 homepage: https://www.dajiraj.com/
 repository: https://github.com/Dajiraj-Infotech/folder_files_fetch.git
 issue_tracker: https://github.com/Dajiraj-Infotech/folder_files_fetch/issues
