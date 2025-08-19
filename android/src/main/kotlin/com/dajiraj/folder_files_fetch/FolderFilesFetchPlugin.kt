@@ -3,6 +3,7 @@ package com.dajiraj.folder_files_fetch
 import android.annotation.TargetApi
 import android.content.Context
 import android.os.Build
+import android.os.Environment
 import android.util.Log
 import androidx.documentfile.provider.DocumentFile
 import io.flutter.embedding.engine.plugins.FlutterPlugin
@@ -16,6 +17,7 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import kotlinx.coroutines.async
 import kotlinx.coroutines.awaitAll
+import java.io.File
 import java.time.LocalDateTime
 import java.time.format.DateTimeFormatter
 
@@ -48,6 +50,10 @@ class FolderFilesFetchPlugin: FlutterPlugin, MethodCallHandler {
     private const val ARG_FOLDER_PATH = "folderPath"  // Folder path to search
     private const val ARG_SORT_TYPE = "sortType"      // Sort order (asc/desc)
     private const val ARG_SORT_BY = "sortBy"          // Sort criteria (name/date)
+    
+    // Android version constants
+    private const val ANDROID_Q = Build.VERSION_CODES.Q  // Android 10
+    private const val ANDROID_9_API_LEVEL = 28  // Android 9 (Pie)
   }
 
   /// The MethodChannel that will the communication between Flutter and native Android
@@ -107,7 +113,7 @@ class FolderFilesFetchPlugin: FlutterPlugin, MethodCallHandler {
         sortBy = call.argument<String>(ARG_SORT_BY)
         
         // Get the list of file URIs from the specified path
-        val uriList = getUriList(path ?: "")
+        val uriList = getUriListWithVersionCheck(path ?: "")
         
         // Switch to main thread to send result back to Flutter
         withContext(Dispatchers.Main) {
@@ -165,6 +171,169 @@ class FolderFilesFetchPlugin: FlutterPlugin, MethodCallHandler {
         Log.e(TAG, "Error processing files: ${e.message}", e)
         emptyList()
       }
+    }
+  }
+
+  /**
+   * Retrieves the list of file URIs from the specified folder path for Android 9 and below.
+   * This function uses full storage permission to access files directly from the file system.
+   * 
+   * @param path The folder path to search for files
+   * @return List of file URIs as strings
+   */
+  private suspend fun getUriListLegacy(path: String): List<String> {
+    return withContext(Dispatchers.IO) {
+      try {
+        Log.d(TAG, "${getCurrentDateTime()} Using legacy storage access for path: $path")
+        
+        // For Android 9 and below, use direct file access
+        val folder = File(path)
+        
+        if (!folder.exists() || !folder.isDirectory) {
+          Log.w(TAG, "Path does not exist or is not a directory: $path")
+          return@withContext emptyList()
+        }
+        
+        // Get all files in the directory
+        val files = folder.listFiles()?.filter { it.isFile } ?: emptyList()
+        
+        Log.d(TAG, "${getCurrentDateTime()} Found ${files.size} files in directory using legacy access")
+        
+        // Process and sort the files according to the specified criteria
+        val sortedFiles = processLegacyFiles(files)
+        
+        // Convert File objects to URI strings
+        sortedFiles.map { it.toURI().toString() }
+      } catch (e: Exception) {
+        Log.e(TAG, "Error processing files with legacy access: ${e.message}", e)
+        emptyList()
+      }
+    }
+  }
+
+  /**
+   * Processes and sorts File objects based on the specified sorting criteria for Android 9 and below.
+   * This function filters valid files and applies sorting by name or date in ascending or descending order.
+   * 
+   * @param files The list of File objects to process
+   * @return List of sorted File objects
+   */
+  private suspend fun processLegacyFiles(files: List<File>): List<File> {
+    return withContext(Dispatchers.IO) {
+      // Early return if no sorting is required
+      if (sortType.isNullOrEmpty() || sortBy.isNullOrEmpty()) {
+        return@withContext files
+      }
+
+      Log.d(TAG, "Legacy sorting - SortType: $sortType, SortBy: $sortBy")
+
+      val sortedFiles = when (sortBy) {
+        NAME -> {
+          if (sortType == ASC) {
+            files.sortedBy { it.name }
+          } else {
+            files.sortedByDescending { it.name }
+          }
+        }
+        DATE -> {
+          if (sortType == ASC) {
+            files.sortedBy { it.lastModified() }
+          } else {
+            files.sortedByDescending { it.lastModified() }
+          }
+        }
+        else -> files
+      }
+
+      sortedFiles
+    }
+  }
+
+  /**
+   * Main function to get URI list based on Android version.
+   * For Android 10 and above: uses DocumentFile API (existing logic)
+   * For Android 9 and below: uses direct file access (new legacy logic)
+   * 
+   * @param path The folder path to search for files
+   * @return List of file URIs as strings
+   */
+  private suspend fun getUriListWithVersionCheck(path: String): List<String> {
+    return if (Build.VERSION.SDK_INT < ANDROID_Q) {
+      // Android 9 and below: use improved legacy storage access
+      getUriListLegacyImproved(path)
+    } else {
+      // Android 10 and above: use existing DocumentFile logic
+      getUriList(path)
+    }
+  }
+
+  /**
+   * Improved function for Android 9 and below that handles path resolution better.
+   * This function tries multiple path formats and provides better error handling.
+   * 
+   * @param path The folder path to search for files
+   * @return List of file URIs as strings
+   */
+  private suspend fun getUriListLegacyImproved(path: String): List<String> {
+    return withContext(Dispatchers.IO) {
+      try {
+        Log.d(TAG, "${getCurrentDateTime()} Using improved legacy storage access for path: $path")
+        
+        // Check storage permissions first
+        if (!hasStoragePermissions()) {
+          Log.w(TAG, "Storage permissions not granted for Android 9 and below")
+          return@withContext emptyList()
+        }
+        
+        // Handle different path formats for Android 9 and below
+        var folder: File? = null
+        
+        // Try the original path first
+        if (path.isNotEmpty()) {
+          folder = when {
+            path.startsWith("/") -> File(path)
+            path.startsWith("file://") -> File(path.substring(7))
+            else -> File(Environment.getExternalStorageDirectory(), path)
+          }
+        }
+        
+        // Final check if we found a valid folder
+        if (folder == null || !folder.exists() || !folder.isDirectory) {
+          Log.w(TAG, "No accessible folder found for path: $path")
+          return@withContext emptyList()
+        }
+        
+        // Get all files in the directory
+        val allFiles = folder.listFiles()
+        val files = allFiles?.filter { it.isFile } ?: emptyList()
+        
+        Log.d(TAG, "${getCurrentDateTime()} Found ${files.size} files in directory using improved legacy access")
+        
+        // Process and sort the files according to the specified criteria
+        val sortedFiles = processLegacyFiles(files)
+        
+        // Convert File objects to URI strings
+        sortedFiles.map { it.toURI().toString() }
+      } catch (e: Exception) {
+        Log.e(TAG, "Error processing files with improved legacy access: ${e.message}", e)
+        emptyList()
+      }
+    }
+  }
+
+  /**
+   * Checks if the app has storage permissions for Android 9 and below.
+   * This is useful for debugging permission issues.
+   * 
+   * @return True if storage is accessible, false otherwise
+   */
+  private fun hasStoragePermissions(): Boolean {
+    return try {
+      val externalStorage = Environment.getExternalStorageDirectory()
+      externalStorage.exists() && externalStorage.canRead()
+    } catch (e: Exception) {
+      Log.w(TAG, "Error checking storage permissions: ${e.message}")
+      false
     }
   }
 
