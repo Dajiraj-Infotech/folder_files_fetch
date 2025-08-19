@@ -2,9 +2,14 @@
 
 All notable changes to this project will be documented in this file.
 
+## 0.0.3
+
+- **Legacy Android Support**: Added support for Android 9 and below with improved file access compatibility
+- **Enhanced Path Resolution**: Implemented improved path resolution for better file retrieval across Android versions
+
 ## 0.0.2
 
-* File Sorting: Improved sorting logic based on name and date with enhanced performance.
+- **File Sorting**: Improved sorting logic based on name and date with enhanced performance.
 
 ## 0.0.1
 
