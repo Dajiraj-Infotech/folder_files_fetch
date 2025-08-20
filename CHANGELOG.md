@@ -2,6 +2,11 @@
 
 All notable changes to this project will be documented in this file.
 
+## 0.0.4
+
+- **Scoped Storage Migration**: Removed legacy file access methods in favor of Android 10+ scoped storage implementation
+- **Performance Improvements**: Streamlined codebase by removing unused legacy methods
+
 ## 0.0.3
 
 - **Legacy Android Support**: Added support for Android 9 and below with improved file access compatibility

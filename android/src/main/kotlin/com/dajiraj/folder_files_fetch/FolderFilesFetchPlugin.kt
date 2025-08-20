@@ -53,7 +53,6 @@ class FolderFilesFetchPlugin: FlutterPlugin, MethodCallHandler {
     
     // Android version constants
     private const val ANDROID_Q = Build.VERSION_CODES.Q  // Android 10
-    private const val ANDROID_9_API_LEVEL = 28  // Android 9 (Pie)
   }
 
   /// The MethodChannel that will the communication between Flutter and native Android
@@ -175,44 +174,7 @@ class FolderFilesFetchPlugin: FlutterPlugin, MethodCallHandler {
   }
 
   /**
-   * Retrieves the list of file URIs from the specified folder path for Android 9 and below.
-   * This function uses full storage permission to access files directly from the file system.
-   * 
-   * @param path The folder path to search for files
-   * @return List of file URIs as strings
-   */
-  private suspend fun getUriListLegacy(path: String): List<String> {
-    return withContext(Dispatchers.IO) {
-      try {
-        Log.d(TAG, "${getCurrentDateTime()} Using legacy storage access for path: $path")
-        
-        // For Android 9 and below, use direct file access
-        val folder = File(path)
-        
-        if (!folder.exists() || !folder.isDirectory) {
-          Log.w(TAG, "Path does not exist or is not a directory: $path")
-          return@withContext emptyList()
-        }
-        
-        // Get all files in the directory
-        val files = folder.listFiles()?.filter { it.isFile } ?: emptyList()
-        
-        Log.d(TAG, "${getCurrentDateTime()} Found ${files.size} files in directory using legacy access")
-        
-        // Process and sort the files according to the specified criteria
-        val sortedFiles = processLegacyFiles(files)
-        
-        // Convert File objects to URI strings
-        sortedFiles.map { it.toURI().toString() }
-      } catch (e: Exception) {
-        Log.e(TAG, "Error processing files with legacy access: ${e.message}", e)
-        emptyList()
-      }
-    }
-  }
-
-  /**
-   * Processes and sorts File objects based on the specified sorting criteria for Android 9 and below.
+   * Processes and sorts File objects based on the specified sorting criteria for Android 10 and below.
    * This function filters valid files and applies sorting by name or date in ascending or descending order.
    * 
    * @param files The list of File objects to process
@@ -251,24 +213,24 @@ class FolderFilesFetchPlugin: FlutterPlugin, MethodCallHandler {
 
   /**
    * Main function to get URI list based on Android version.
-   * For Android 10 and above: uses DocumentFile API (existing logic)
-   * For Android 9 and below: uses direct file access (new legacy logic)
+   * For Android 11 and above: uses DocumentFile API (existing logic)
+   * For Android 10 and below: uses direct file access (new legacy logic)
    * 
    * @param path The folder path to search for files
    * @return List of file URIs as strings
    */
   private suspend fun getUriListWithVersionCheck(path: String): List<String> {
-    return if (Build.VERSION.SDK_INT < ANDROID_Q) {
-      // Android 9 and below: use improved legacy storage access
+    return if (Build.VERSION.SDK_INT <= ANDROID_Q) {
+      // Android 10 and below: use improved legacy storage access
       getUriListLegacyImproved(path)
     } else {
-      // Android 10 and above: use existing DocumentFile logic
+      // Android 11 and above: use existing DocumentFile logic
       getUriList(path)
     }
   }
 
   /**
-   * Improved function for Android 9 and below that handles path resolution better.
+   * Improved function for Android 10 and below that handles path resolution better.
    * This function tries multiple path formats and provides better error handling.
    * 
    * @param path The folder path to search for files
@@ -281,11 +243,11 @@ class FolderFilesFetchPlugin: FlutterPlugin, MethodCallHandler {
         
         // Check storage permissions first
         if (!hasStoragePermissions()) {
-          Log.w(TAG, "Storage permissions not granted for Android 9 and below")
+          Log.w(TAG, "Storage permissions not granted for Android 10 and below")
           return@withContext emptyList()
         }
         
-        // Handle different path formats for Android 9 and below
+        // Handle different path formats for Android 10 and below
         var folder: File? = null
         
         // Try the original path first
@@ -322,7 +284,7 @@ class FolderFilesFetchPlugin: FlutterPlugin, MethodCallHandler {
   }
 
   /**
-   * Checks if the app has storage permissions for Android 9 and below.
+   * Checks if the app has storage permissions for Android 10 and below.
    * This is useful for debugging permission issues.
    * 
    * @return True if storage is accessible, false otherwise
