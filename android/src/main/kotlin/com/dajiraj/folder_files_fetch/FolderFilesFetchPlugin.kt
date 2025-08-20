@@ -174,43 +174,6 @@ class FolderFilesFetchPlugin: FlutterPlugin, MethodCallHandler {
   }
 
   /**
-   * Retrieves the list of file URIs from the specified folder path for Android 10 and below.
-   * This function uses full storage permission to access files directly from the file system.
-   * 
-   * @param path The folder path to search for files
-   * @return List of file URIs as strings
-   */
-  private suspend fun getUriListLegacy(path: String): List<String> {
-    return withContext(Dispatchers.IO) {
-      try {
-        Log.d(TAG, "${getCurrentDateTime()} Using legacy storage access for path: $path")
-        
-        // For Android 10 and below, use direct file access
-        val folder = File(path)
-        
-        if (!folder.exists() || !folder.isDirectory) {
-          Log.w(TAG, "Path does not exist or is not a directory: $path")
-          return@withContext emptyList()
-        }
-        
-        // Get all files in the directory
-        val files = folder.listFiles()?.filter { it.isFile } ?: emptyList()
-        
-        Log.d(TAG, "${getCurrentDateTime()} Found ${files.size} files in directory using legacy access")
-        
-        // Process and sort the files according to the specified criteria
-        val sortedFiles = processLegacyFiles(files)
-        
-        // Convert File objects to URI strings
-        sortedFiles.map { it.toURI().toString() }
-      } catch (e: Exception) {
-        Log.e(TAG, "Error processing files with legacy access: ${e.message}", e)
-        emptyList()
-      }
-    }
-  }
-
-  /**
    * Processes and sorts File objects based on the specified sorting criteria for Android 10 and below.
    * This function filters valid files and applies sorting by name or date in ascending or descending order.
    * 
